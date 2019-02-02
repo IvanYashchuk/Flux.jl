@@ -95,12 +95,23 @@ end
 
 Base.getindex(xs::TrackedArray, i...) = track(getindex, xs, i...)
 
-@grad function getindex(xs::AbstractArray, i...)
-  data(xs)[i...], function (Δ)
-    Δ′ = zero(xs)
-    Δ′[i...] = data(Δ)
-    (nobacksies(:getindex, Δ′), map(_->nothing, i)...)
+struct getindex_back{T,S}
+    xs::T
+    i::S
+end
+function (g::getindex_back)(Δ)
+  Δ′ = zero(g.xs)
+  Δ′[g.i...] = data(Δ)
+  (Δ′, map(_->nothing, g.i)...)
+end
+@grad function (g::getindex_back)(Δ)
+  g(Δ), function(Δ′′)
+    (Δ′′[g.i...], map(_->nothing, g.i)...)
   end
+end
+
+@grad function getindex(xs::AbstractArray, i...)
+  data(xs)[i...], getindex_back(xs, i)
 end
 
 Base.view(x::TrackedArray, inds...) = track(Base.view, x, inds...)
@@ -121,7 +132,7 @@ Base.:-(xs::TrackedArray) = track(-, xs)
 Base.transpose(xs::TrackedArray) = track(transpose, xs)
 Base.adjoint(xs::TrackedArray) = track(adjoint, xs)
 
-@grad transpose(xs) = transpose(data(xs)), Δ -> (trim(xs, transpose(Δ)),)
+@grad transpose(xs) = transpose(data(xs)), Δ -> (transpose(Δ),)
 @grad adjoint(xs) = data(xs)', Δ -> (trim(xs, Δ'),)
 
 Base.repeat(xs::TrackedArray; kw...) = track(repeat, xs; kw...)
@@ -360,6 +371,9 @@ x::TrackedVector  * y::TrackedVector  = track(*, x, y)
 
 @grad a::AbstractMatrix * b::AbstractVecOrMat =
   data(a)*data(b), Δ -> (Δ * transpose(b), transpose(a) * Δ)
+
+@grad a::TrackedMatrix{<:Any, <:Transpose} * b::AbstractVecOrMat =
+  data(a)*data(b), Δ -> (transpose(b * transpose(Δ)), transpose(a) * Δ)
 
 # NNlib
 
