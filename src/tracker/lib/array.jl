@@ -95,12 +95,25 @@ end
 
 Base.getindex(xs::TrackedArray, i...) = track(getindex, xs, i...)
 
-@grad function getindex(xs::AbstractArray, i...)
-  data(xs)[i...], function (Δ)
-    Δ′ = zero(xs)
-    Δ′[i...] = data(Δ)
-    (nobacksies(:getindex, Δ′), map(_->nothing, i)...)
+struct getindex_back{T,S}
+    xs::T
+    i::S
+end
+
+function (g::getindex_back)(Δ)
+  Δ′ = zero(g.xs)
+  Δ′[g.i...] = data(Δ)
+  (Δ′, map(_->nothing, g.i)...)
+end
+
+@grad function (g::getindex_back)(Δ)
+  g(Δ), function(Δ′′)
+    (Δ′′[g.i...], map(_->nothing, g.i)...)
   end
+end
+
+@grad function getindex(xs::AbstractArray, i...)
+  data(xs)[i...], getindex_back(xs, i)
 end
 
 Base.view(x::TrackedArray, inds...) = track(Base.view, x, inds...)

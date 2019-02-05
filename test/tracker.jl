@@ -36,6 +36,15 @@ gradtest(f, dims...) = gradtest(f, rand.(Float64, dims)...)
 
 @testset "indexing & slicing" begin
   gradtest(x->view(x, 1:2, 1:2), rand(4, 4))
+
+  # Nested AD for getindex
+  @test gradient([1.0, 2.0, 3.0]; nest=true) do x
+    sum(x .* gradient(x; nest=true) do x
+      sum(x .* gradient(x; nest=true) do x
+        sum(x[1:2])^4
+      end[1])
+    end[1])
+  end[1] == [108.0, 108.0, 0]
 end
 
 function promotiontest(f, A, B, C)
